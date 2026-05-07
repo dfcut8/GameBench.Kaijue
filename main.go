@@ -44,6 +44,7 @@ const (
 	defaultKaijuSrcPath  = "../kaiju/src"
 	rawEngineContentPath = "editor/editor_embedded_content/editor_content"
 	musicKey             = "audio/benchmark_loop.wav"
+	uiFontFace           = rendering.FontFace("fonts/Kenney Pixel Square")
 )
 
 var benchmarkFrameKeys = []string{
@@ -222,17 +223,18 @@ func (g *Game) createOverlay() {
 	g.overlayRoot.DontFitContent()
 	g.overlayRoot.SetColor(matrix.ColorTransparent())
 	g.overlayRoot.AllowClickThrough()
-	g.overlayRoot.Base().Layout().Scale(windowWidth, 72)
+	g.overlayRoot.Base().Layout().Scale(windowWidth, 104)
 	g.overlayRoot.Base().Layout().SetOffset(0, 0)
 
 	g.overlayLabel = g.uiManager.Add().ToLabel()
 	g.overlayLabel.Init("")
-	g.overlayLabel.SetFontSize(15)
+	g.overlayLabel.SetFontFace(uiFontFace)
+	g.overlayLabel.SetFontSize(17)
 	g.overlayLabel.SetColor(matrix.ColorWhite())
 	g.overlayLabel.SetBGColor(matrix.ColorTransparent())
 	g.overlayLabel.SetWrap(false)
 	g.overlayLabel.SetMaxWidth(windowWidth - 16)
-	g.overlayLabel.Base().Layout().Scale(windowWidth-16, 64)
+	g.overlayLabel.Base().Layout().Scale(windowWidth-16, 96)
 	g.overlayLabel.Base().Layout().SetOffset(8, 8)
 	g.overlayRoot.AddChild(g.overlayLabel.Base())
 	g.refreshOverlay()
@@ -250,14 +252,15 @@ func (g *Game) createMainMenu() {
 
 	title := g.uiManager.Add().ToLabel()
 	title.Init("Kaiju 2D Benchmark")
-	title.SetFontSize(28)
+	title.SetFontFace(uiFontFace)
+	title.SetFontSize(30)
 	title.SetColor(matrix.ColorWhite())
 	title.SetBGColor(matrix.ColorTransparent())
 	title.SetJustify(rendering.FontJustifyCenter)
 	title.SetBaseline(rendering.FontBaselineCenter)
 	title.SetWrap(false)
-	title.SetMaxWidth(420)
-	title.Base().Layout().Scale(420, 56)
+	title.SetMaxWidth(520)
+	title.Base().Layout().Scale(520, 64)
 	title.Base().Layout().SetOffset(110, 96)
 	g.menuRoot.AddChild(title.Base())
 
@@ -279,7 +282,8 @@ func (g *Game) createMenuButton(text string, x, y float32, click func()) *ui.But
 	button := g.uiManager.Add().ToButton()
 	button.Init(tex, text)
 	button.Label().SetText(text)
-	button.Label().SetFontSize(18)
+	button.Label().SetFontFace(uiFontFace)
+	button.Label().SetFontSize(19)
 	button.SetColor(matrix.ColorRGBAInt(230, 234, 241, 255))
 	button.Base().Layout().Scale(200, 48)
 	button.Base().Layout().SetOffset(x, y)

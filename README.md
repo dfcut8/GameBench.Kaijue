@@ -2,7 +2,7 @@
 
 A small Kaiju Engine desktop benchmark. It opens a fixed `1280x960` window, shows a main menu, then spawns animated `32x32` pixel-art sprites with 2D box collision, keeps them inside the scene bounds, and shows current FPS.
 
-Rendering is configured for pixel-perfect 2D output: orthographic cameras, nearest-neighbor sprite sampling, integer UI layout positions, and whole-pixel sprite draw positions.
+Rendering is configured for pixel-perfect 2D sprites with orthographic cameras, nearest-neighbor sprite sampling, and whole-pixel sprite draw positions. UI labels use `assets/fonts/Kenney Pixel Square.ttf`, with a Kaiju atlas/metrics pair generated beside it.
 
 ## Prerequisites
 

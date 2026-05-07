@@ -11,6 +11,7 @@ Build a small desktop benchmark game in this repo that uses an external local Ka
 - Force the window to `1280x960`, configure centered orthographic cameras for pixel-perfect 2D rendering, start physics, and set gravity to `(0, 0, 0)`.
 - Spawn animated `32x32` pixel-art sprite objects with 2D box collision and random starting velocities.
 - Load sprite frames with nearest-neighbor filtering and snap sprite render positions to whole pixels.
+- Render menu and overlay text with Kaiju labels using `assets/fonts/Kenney Pixel Square.ttf` via generated atlas/metrics files.
 - Add four static wall colliders around the viewport.
 - Add keyboard controls:
   - Main menu: `Enter` starts the benchmark, `Q` quits.
