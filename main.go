@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"kaijuengine.com/bootstrap"
 	"kaijuengine.com/engine"
 	"kaijuengine.com/engine/assets"
-	"kaijuengine.com/engine/cameras"
+	"kaijuengine.com/engine/host_container"
 	"kaijuengine.com/engine/physics"
+	"kaijuengine.com/engine/systems/logging"
 	"kaijuengine.com/engine/systems/visual2d/sprite"
 	"kaijuengine.com/engine/ui"
 	"kaijuengine.com/matrix"
@@ -59,6 +59,7 @@ type Game struct {
 	host          *engine.Host
 	uiManager     ui.Manager
 	menuRoot      *ui.Panel
+	overlayRoot   *ui.Panel
 	overlayLabel  *ui.Label
 	objects       []benchmarkObject
 	walls         []wallBody
@@ -72,15 +73,45 @@ type Game struct {
 }
 
 func main() {
-	bootstrap.Main(getGame(), nil)
+	if err := runGame(); err != nil {
+		logGame("failed to run game", "error", err)
+		os.Exit(1)
+	}
 }
 
-func getGame() bootstrap.GameInterface {
+func getGame() *Game {
 	return &Game{
 		targetCount:   defaultObjects,
 		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
 		lastObjectLog: -1,
 	}
+}
+
+func runGame() error {
+	logStream := logging.Initialize(nil)
+	defer logStream.Close()
+
+	game := getGame()
+	adb, err := game.ContentDatabase()
+	if err != nil {
+		return err
+	}
+
+	container := host_container.New("Kaiju 2D Benchmark", logStream, adb)
+	container.RunFunction(func() {
+		container.Host.Window.EnableRawMouseInput()
+		game.Launch(container.Host)
+	})
+
+	go func() {
+		if err := container.Run(windowWidth, windowHeight, -1, -1, nil); err != nil {
+			logGame("host run failed", "error", err)
+		}
+	}()
+
+	<-container.PrepLock
+	<-container.Host.Done()
+	return nil
 }
 
 func (Game) PluginRegistry() []reflect.Type {
@@ -104,8 +135,11 @@ func (Game) ContentDatabase() (assets.Database, error) {
 func (g *Game) Launch(host *engine.Host) {
 	logGame("launching game")
 	g.host = host
+	logGame("configuring cameras")
 	g.configureWindowAndCameras()
+	logGame("configuring physics")
 	g.configurePhysics()
+	logGame("initializing ui")
 	g.uiManager.Init(g.host)
 	g.createMainMenu()
 	g.createOverlay()
@@ -117,24 +151,7 @@ func (g *Game) Launch(host *engine.Host) {
 }
 
 func (g *Game) configureWindowAndCameras() {
-	g.host.Window.SetTitle("Kaiju 2D Benchmark")
-	g.host.Window.SetSize(windowWidth, windowHeight)
-
-	primary := cameras.NewStandardCameraOrthographic(
-		windowWidth, windowHeight,
-		windowWidth, windowHeight,
-		matrix.NewVec3(0, 0, 250),
-	)
-	primary.SetLookAt(matrix.Vec3Zero())
-	g.host.Cameras.Primary.ChangeCamera(primary)
-
-	uiCamera := cameras.NewStandardCameraOrthographic(
-		windowWidth, windowHeight,
-		windowWidth, windowHeight,
-		matrix.NewVec3(0, 0, 250),
-	)
-	uiCamera.SetLookAt(matrix.Vec3Zero())
-	g.host.Cameras.UI.ChangeCamera(uiCamera)
+	logGame("using host-created window and cameras", "width", g.host.Window.Width(), "height", g.host.Window.Height())
 }
 
 func (g *Game) configurePhysics() {
@@ -143,6 +160,14 @@ func (g *Game) configurePhysics() {
 }
 
 func (g *Game) createOverlay() {
+	g.overlayRoot = g.uiManager.Add().ToPanel()
+	g.overlayRoot.Init(nil, ui.ElementTypePanel)
+	g.overlayRoot.DontFitContent()
+	g.overlayRoot.SetColor(matrix.ColorTransparent())
+	g.overlayRoot.AllowClickThrough()
+	g.overlayRoot.Base().Layout().Scale(windowWidth, 72)
+	g.overlayRoot.Base().Layout().SetOffset(0, 0)
+
 	g.overlayLabel = g.uiManager.Add().ToLabel()
 	g.overlayLabel.Init("")
 	g.overlayLabel.SetFontSize(15)
@@ -152,8 +177,9 @@ func (g *Game) createOverlay() {
 	g.overlayLabel.SetMaxWidth(windowWidth - 16)
 	g.overlayLabel.Base().Layout().Scale(windowWidth-16, 64)
 	g.overlayLabel.Base().Layout().SetOffset(8, 8)
+	g.overlayRoot.AddChild(g.overlayLabel.Base())
 	g.refreshOverlay()
-	g.overlayLabel.Hide()
+	g.overlayRoot.Base().Hide()
 }
 
 func (g *Game) createMainMenu() {
@@ -215,7 +241,7 @@ func (g *Game) startBenchmark() {
 		g.host.DestroyEntity(g.menuRoot.Base().Entity())
 		g.menuRoot = nil
 	}
-	g.overlayLabel.Show()
+	g.overlayRoot.Base().Show()
 	g.createWalls()
 	g.refreshOverlay()
 }
@@ -257,9 +283,7 @@ func (g *Game) update(deltaTime float64) {
 
 func (g *Game) enforceFixedResolution() {
 	if g.host.Window.Width() != windowWidth || g.host.Window.Height() != windowHeight {
-		g.host.Window.SetSize(windowWidth, windowHeight)
-		g.host.Cameras.Primary.Camera.ViewportChanged(windowWidth, windowHeight)
-		g.host.Cameras.UI.Camera.ViewportChanged(windowWidth, windowHeight)
+		logGame("window size changed", "width", g.host.Window.Width(), "height", g.host.Window.Height())
 	}
 }
 

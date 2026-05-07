@@ -53,7 +53,14 @@ To build an executable:
 
 ```powershell
 $env:CGO_ENABLED = "1"
-go build -o GameBench.Kaijue.exe .
+go build -ldflags '-linkmode external -extldflags "-static -static-libgcc -static-libstdc++"' -o GameBench.Kaijue.exe .
+.\GameBench.Kaijue.exe
+```
+
+If Windows reports a missing MinGW DLL such as `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, or `libwinpthread-1.dll`, rebuild with the static command above. As an alternative for local development, add `C:\msys64\mingw64\bin` to `PATH` before launching:
+
+```powershell
+$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 .\GameBench.Kaijue.exe
 ```
 
