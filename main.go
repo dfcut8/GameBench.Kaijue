@@ -14,6 +14,7 @@ import (
 
 	"kaijuengine.com/engine"
 	"kaijuengine.com/engine/assets"
+	"kaijuengine.com/engine/cameras"
 	"kaijuengine.com/engine/host_container"
 	"kaijuengine.com/engine/physics"
 	"kaijuengine.com/engine/systems/logging"
@@ -178,11 +179,16 @@ func (g *Game) Launch(host *engine.Host) {
 }
 
 func (g *Game) configureWindowAndCameras() {
-	g.host.Cameras.Primary.Camera.ViewportChanged(windowWidth, windowHeight)
-	g.host.Cameras.Primary.Camera.SetProperties(60, 0.01, 2500, windowWidth, windowHeight)
-	g.host.Cameras.Primary.Camera.SetPosition(matrix.NewVec3(0, 0, 500))
-	g.host.Cameras.Primary.Camera.SetLookAt(matrix.Vec3Zero())
-	g.host.Cameras.UI.Camera.ViewportChanged(windowWidth, windowHeight)
+	primary := cameras.NewStandardCameraOrthographic(windowWidth, windowHeight, windowWidth, windowHeight, matrix.NewVec3(0, 0, 100))
+	primary.SetProperties(60, -500, 500, windowWidth, windowHeight)
+	primary.SetLookAt(matrix.Vec3Zero())
+	g.host.Cameras.Primary.ChangeCamera(primary)
+
+	uiCamera := cameras.NewStandardCameraOrthographic(windowWidth, windowHeight, windowWidth, windowHeight, matrix.NewVec3(0, 0, 250))
+	uiCamera.SetProperties(60, -500, 500, windowWidth, windowHeight)
+	uiCamera.SetLookAt(matrix.Vec3Zero())
+	g.host.Cameras.UI.ChangeCamera(uiCamera)
+
 	logGame("configured 2d camera", "width", g.host.Window.Width(), "height", g.host.Window.Height())
 }
 
@@ -269,7 +275,7 @@ func (g *Game) createMainMenu() {
 }
 
 func (g *Game) createMenuButton(text string, x, y float32, click func()) *ui.Button {
-	tex, _ := g.host.TextureCache().Texture(assets.TextureSquare, rendering.TextureFilterLinear)
+	tex, _ := g.host.TextureCache().Texture(assets.TextureSquare, rendering.TextureFilterNearest)
 	button := g.uiManager.Add().ToButton()
 	button.Init(tex, text)
 	button.Label().SetText(text)
@@ -437,7 +443,7 @@ func (g *Game) simulate2D(deltaTime float64) {
 		} else {
 			obj.sprite.SetColor(obj.baseColor)
 		}
-		obj.sprite.SetPosition(float32(obj.x), float32(obj.y))
+		obj.sprite.SetPosition(float32(math.Round(obj.x)), float32(math.Round(obj.y)))
 		obj.sprite.Entity.Transform.SetRotation(matrix.Vec3Zero())
 	}
 }
