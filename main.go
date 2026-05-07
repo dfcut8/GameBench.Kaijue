@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -24,8 +25,8 @@ import (
 )
 
 const (
-	windowWidth  = 640
-	windowHeight = 480
+	windowWidth  = 1280
+	windowHeight = 960
 	spriteSize   = 32
 	wallDepth    = 32
 
@@ -34,18 +35,37 @@ const (
 	minObjects     = 0
 	maxObjects     = 5000
 	maxSpawnFrame  = 25
+	flashDuration  = 0.25
 
 	gameContentPath      = "game_content"
+	customContentPath    = "assets"
 	kaijuEngineEnv       = "KAIJU_ENGINE_DIR"
 	defaultKaijuSrcPath  = "../kaiju/src"
 	rawEngineContentPath = "editor/editor_embedded_content/editor_content"
+	musicKey             = "audio/benchmark_loop.wav"
 )
 
+var benchmarkFrameKeys = []string{
+	"sprites/bench_blob_0.png",
+	"sprites/bench_blob_1.png",
+	"sprites/bench_blob_2.png",
+	"sprites/bench_blob_3.png",
+	"sprites/bench_blob_4.png",
+	"sprites/bench_blob_5.png",
+	"sprites/bench_blob_6.png",
+	"sprites/bench_blob_7.png",
+}
+
 type benchmarkObject struct {
-	sprite *sprite.Sprite
-	shape  *physics.BoxShape
-	motion *physics.MotionState
-	body   *physics.RigidBody
+	sprite     *sprite.Sprite
+	baseColor  matrix.Color
+	x          float64
+	y          float64
+	vx         float64
+	vy         float64
+	frame      int
+	frameTimer float64
+	flashTimer float64
 }
 
 type wallBody struct {
@@ -70,6 +90,7 @@ type Game struct {
 	uiTimer       float64
 	benchmarkOn   bool
 	lastObjectLog int
+	animation     []*rendering.Texture
 }
 
 func main() {
@@ -129,6 +150,9 @@ func (Game) ContentDatabase() (assets.Database, error) {
 	} else {
 		logGame("using existing game content", "path", gameContentPath)
 	}
+	if err := copyCustomContent(); err != nil {
+		return nil, err
+	}
 	return assets.NewFileDatabase(gameContentPath)
 }
 
@@ -139,24 +163,51 @@ func (g *Game) Launch(host *engine.Host) {
 	g.configureWindowAndCameras()
 	logGame("configuring physics")
 	g.configurePhysics()
+	g.playBackgroundMusic()
 	logGame("initializing ui")
 	g.uiManager.Init(g.host)
 	g.createMainMenu()
 	g.createOverlay()
 
 	g.updateID = host.Updater.AddUpdate(g.update)
+	lateUpdateID := host.LateUpdater.AddUpdate(g.lateUpdate)
 	host.OnClose.Add(func() {
 		host.Updater.RemoveUpdate(&g.updateID)
+		host.LateUpdater.RemoveUpdate(&lateUpdateID)
 	})
 }
 
 func (g *Game) configureWindowAndCameras() {
-	logGame("using host-created window and cameras", "width", g.host.Window.Width(), "height", g.host.Window.Height())
+	g.host.Cameras.Primary.Camera.ViewportChanged(windowWidth, windowHeight)
+	g.host.Cameras.Primary.Camera.SetProperties(60, 0.01, 2500, windowWidth, windowHeight)
+	g.host.Cameras.Primary.Camera.SetPosition(matrix.NewVec3(0, 0, 500))
+	g.host.Cameras.Primary.Camera.SetLookAt(matrix.Vec3Zero())
+	g.host.Cameras.UI.Camera.ViewportChanged(windowWidth, windowHeight)
+	logGame("configured 2d camera", "width", g.host.Window.Width(), "height", g.host.Window.Height())
 }
 
 func (g *Game) configurePhysics() {
 	g.host.StartPhysics()
 	g.host.Physics().World().SetGravity(matrix.Vec3Zero())
+}
+
+func (g *Game) playBackgroundMusic() {
+	if g.host.Audio() == nil {
+		logGame("audio system unavailable")
+		return
+	}
+	g.host.Audio().SetMusicVolume(0.18)
+	clip, err := g.host.Audio().LoadMusic(g.host.AssetDatabase(), musicKey)
+	if err != nil {
+		logGame("failed to load background music", "key", musicKey, "error", err)
+		return
+	}
+	_, handle := g.host.Audio().PlayMusic(musicKey)
+	if handle == 0 {
+		logGame("failed to start background music", "key", musicKey)
+		return
+	}
+	logGame("playing background music", "key", musicKey, "seconds", fmt.Sprintf("%.1f", clip.Length()))
 }
 
 func (g *Game) createOverlay() {
@@ -237,6 +288,9 @@ func (g *Game) startBenchmark() {
 	g.benchmarkOn = true
 	g.lastObjectLog = -1
 	logGame("starting benchmark", "targetObjects", g.targetCount)
+	if err := g.loadAnimation(); err != nil {
+		logGame("failed to load benchmark animation", "error", err)
+	}
 	if g.menuRoot != nil {
 		g.host.DestroyEntity(g.menuRoot.Base().Entity())
 		g.menuRoot = nil
@@ -244,6 +298,22 @@ func (g *Game) startBenchmark() {
 	g.overlayRoot.Base().Show()
 	g.createWalls()
 	g.refreshOverlay()
+}
+
+func (g *Game) loadAnimation() error {
+	if len(g.animation) == len(benchmarkFrameKeys) {
+		return nil
+	}
+	g.animation = g.animation[:0]
+	for _, key := range benchmarkFrameKeys {
+		tex, err := g.host.TextureCache().Texture(key, rendering.TextureFilterNearest)
+		if err != nil {
+			return err
+		}
+		g.animation = append(g.animation, tex)
+	}
+	logGame("loaded animated sprite frames", "frames", len(g.animation))
+	return nil
 }
 
 func (g *Game) createWalls() {
@@ -278,7 +348,129 @@ func (g *Game) update(deltaTime float64) {
 	}
 	g.handleKeyboard()
 	g.syncObjectCount()
+	g.simulate2D(deltaTime)
 	g.updateFPS(deltaTime)
+}
+
+func (g *Game) lateUpdate(deltaTime float64) {
+	if !g.benchmarkOn {
+		return
+	}
+	for i := range g.objects {
+		t := &g.objects[i].sprite.Entity.Transform
+		p := t.Position()
+		if !matrix.Approx(p.Z(), 0) {
+			p.SetZ(0)
+			t.SetPosition(p)
+		}
+		t.SetRotation(matrix.Vec3Zero())
+	}
+}
+
+func (g *Game) simulate2D(deltaTime float64) {
+	if deltaTime <= 0 || len(g.objects) == 0 {
+		return
+	}
+
+	halfSize := float64(spriteSize) * 0.5
+	minX := -float64(windowWidth)*0.5 + halfSize
+	maxX := float64(windowWidth)*0.5 - halfSize
+	minY := -float64(windowHeight)*0.5 + halfSize
+	maxY := float64(windowHeight)*0.5 - halfSize
+
+	grid := make(map[[2]int][]int, len(g.objects))
+	cellSize := float64(spriteSize)
+	for i := range g.objects {
+		obj := &g.objects[i]
+		obj.x += obj.vx * deltaTime
+		obj.y += obj.vy * deltaTime
+
+		if obj.x < minX {
+			obj.x = minX
+			obj.vx = math.Abs(obj.vx)
+		} else if obj.x > maxX {
+			obj.x = maxX
+			obj.vx = -math.Abs(obj.vx)
+		}
+		if obj.y < minY {
+			obj.y = minY
+			obj.vy = math.Abs(obj.vy)
+		} else if obj.y > maxY {
+			obj.y = maxY
+			obj.vy = -math.Abs(obj.vy)
+		}
+
+		cell := [2]int{
+			int(math.Floor((obj.x - minX) / cellSize)),
+			int(math.Floor((obj.y - minY) / cellSize)),
+		}
+		grid[cell] = append(grid[cell], i)
+	}
+
+	for i := range g.objects {
+		a := &g.objects[i]
+		cx := int(math.Floor((a.x - minX) / cellSize))
+		cy := int(math.Floor((a.y - minY) / cellSize))
+		for gy := cy - 1; gy <= cy+1; gy++ {
+			for gx := cx - 1; gx <= cx+1; gx++ {
+				for _, j := range grid[[2]int{gx, gy}] {
+					if j <= i {
+						continue
+					}
+					g.resolveCollision(a, &g.objects[j])
+				}
+			}
+		}
+	}
+
+	for i := range g.objects {
+		obj := &g.objects[i]
+		obj.frameTimer += deltaTime
+		if len(g.animation) > 0 && obj.frameTimer >= 0.125 {
+			obj.frameTimer = 0
+			obj.frame = (obj.frame + 1) % len(g.animation)
+			obj.sprite.SetTexture(g.animation[obj.frame])
+		}
+		if obj.flashTimer > 0 {
+			obj.flashTimer = math.Max(0, obj.flashTimer-deltaTime)
+			obj.sprite.SetColor(matrix.NewColor(1.8, 1.8, 1.8, 1))
+		} else {
+			obj.sprite.SetColor(obj.baseColor)
+		}
+		obj.sprite.SetPosition(float32(obj.x), float32(obj.y))
+		obj.sprite.Entity.Transform.SetRotation(matrix.Vec3Zero())
+	}
+}
+
+func (g *Game) resolveCollision(a, b *benchmarkObject) {
+	dx := b.x - a.x
+	dy := b.y - a.y
+	overlapX := float64(spriteSize) - math.Abs(dx)
+	overlapY := float64(spriteSize) - math.Abs(dy)
+	if overlapX <= 0 || overlapY <= 0 {
+		return
+	}
+	a.flashTimer = flashDuration
+	b.flashTimer = flashDuration
+
+	if overlapX < overlapY {
+		sign := 1.0
+		if dx < 0 {
+			sign = -1
+		}
+		a.x -= sign * overlapX * 0.5
+		b.x += sign * overlapX * 0.5
+		a.vx, b.vx = b.vx, a.vx
+		return
+	}
+
+	sign := 1.0
+	if dy < 0 {
+		sign = -1
+	}
+	a.y -= sign * overlapY * 0.5
+	b.y += sign * overlapY * 0.5
+	a.vy, b.vy = b.vy, a.vy
 }
 
 func (g *Game) enforceFixedResolution() {
@@ -306,7 +498,7 @@ func (g *Game) handleKeyboard() {
 	case keyboard.KeyDown(hid.KeyboardKeyZ):
 		g.setTargetCount(g.targetCount-objectStep, "decrease target")
 	case keyboard.KeyDown(hid.KeyboardKeyR):
-		g.setTargetCount(defaultObjects, "reset target")
+		g.resetBenchmark()
 	case keyboard.KeyDown(hid.KeyboardKeyQ):
 		logGame("quit selected during benchmark")
 		g.host.Close()
@@ -320,6 +512,19 @@ func (g *Game) setTargetCount(target int, reason string) {
 	}
 	g.targetCount = next
 	logGame(reason, "targetObjects", g.targetCount)
+}
+
+func (g *Game) resetBenchmark() {
+	logGame("reloading benchmark", "oldObjects", len(g.objects), "targetObjects", defaultObjects)
+	for i := range g.objects {
+		g.host.DestroyEntity(&g.objects[i].sprite.Entity)
+	}
+	g.objects = g.objects[:0]
+	g.targetCount = defaultObjects
+	g.lastObjectLog = -1
+	g.smoothedFPS = 0
+	g.uiTimer = 0
+	g.refreshOverlay()
 }
 
 func (g *Game) syncObjectCount() {
@@ -349,26 +554,40 @@ func (g *Game) spawnObject() benchmarkObject {
 	)
 
 	s := &sprite.Sprite{}
-	s.Init(float32(x), float32(y), spriteSize, spriteSize, g.host, assets.TextureSquare, color)
-	s.SetUnBlended()
-
-	shape := physics.NewBoxShape(matrix.NewVec3(spriteSize/2, spriteSize/2, 0.5))
-	motion := physics.NewDefaultMotionState(matrix.QuaternionIdentity(), s.Entity.Transform.Position())
-	inertia := shape.CollisionShape.CalculateLocalInertia(1)
-	body := physics.NewRigidBody(1, motion, &shape.CollisionShape, inertia)
-	g.host.Physics().AddEntity(&s.Entity, body)
-
-	impulse := matrix.NewVec3(
-		matrix.Float(randomRange(g.rng, -240, 240)),
-		matrix.Float(randomRange(g.rng, -240, 240)),
-		0,
-	)
-	if impulse.LengthSquared() < 1 {
-		impulse = matrix.NewVec3(120, 80, 0)
+	frame := 0
+	baseColor := color
+	if len(g.animation) > 0 {
+		frame = g.rng.Intn(len(g.animation))
+		baseColor = matrix.ColorWhite()
+		s.InitFromTexture(float32(x), float32(y), spriteSize, spriteSize, g.host, g.animation[0], matrix.ColorWhite())
+		s.SetUnBlended()
+		s.SetUVs(0, matrix.NewVec4(0, 0, 1, 1))
+		if frame != 0 {
+			s.SetTexture(g.animation[frame])
+		}
+	} else {
+		s.Init(float32(x), float32(y), spriteSize, spriteSize, g.host, assets.TextureSquare, color)
+		s.SetUnBlended()
+		s.SetUVs(0, matrix.NewVec4(0, 0, 1, 1))
 	}
-	body.ApplyImpulseAtPoint(impulse, s.Entity.Transform.Position())
 
-	return benchmarkObject{sprite: s, shape: shape, motion: motion, body: body}
+	vx := float64(randomRange(g.rng, -140, 140))
+	vy := float64(randomRange(g.rng, -140, 140))
+	if math.Abs(vx)+math.Abs(vy) < 80 {
+		vx = 120
+		vy = 80
+	}
+
+	return benchmarkObject{
+		sprite:     s,
+		baseColor:  baseColor,
+		x:          float64(x),
+		y:          float64(y),
+		vx:         vx,
+		vy:         vy,
+		frame:      frame,
+		frameTimer: g.rng.Float64() * 0.125,
+	}
 }
 
 func (g *Game) updateFPS(deltaTime float64) {
@@ -461,6 +680,39 @@ func copyKaijuStockContent() error {
 		}
 	}
 	return nil
+}
+
+func copyCustomContent() error {
+	if _, err := os.Stat(customContentPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return filepath.WalkDir(customContentPath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(customContentPath, path)
+		if err != nil {
+			return err
+		}
+		outPath := filepath.Join(gameContentPath, rel)
+		if err := os.MkdirAll(filepath.Dir(outPath), os.ModePerm); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(outPath, data, os.ModePerm); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (g *Game) logObjectProgress() {

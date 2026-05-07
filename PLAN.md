@@ -1,7 +1,7 @@
 # Kaiju 2D Benchmark Game Plan
 
 ## Summary
-Build a small desktop benchmark game in this repo that uses an external local Kaiju Engine checkout. The game runs at fixed `640x480`, renders many `32x32` sprites, gives each sprite a box physics body, disables gravity, contains objects with wall colliders, and shows an FPS/object-count overlay.
+Build a small desktop benchmark game in this repo that uses an external local Kaiju Engine checkout. The game runs at fixed `1280x960`, renders many `32x32` sprites, gives each sprite a box physics body, disables gravity, contains objects with wall colliders, and shows an FPS/object-count overlay.
 
 ## Key Changes
 - Create a Go module in this repo with `require kaijuengine.com` and `replace kaijuengine.com => ../kaiju/src`.
@@ -9,7 +9,7 @@ Build a small desktop benchmark game in this repo that uses an external local Ka
 - Add a main menu scene with `Start Benchmark` and `Quit`; the benchmark objects are not spawned until the benchmark starts.
 - Use `assets.NewFileDatabase("game_content")`, copying Kaiju's stock runtime content from the external checkout on first run.
 - Force the window to `640x480`, configure centered orthographic cameras, start physics, and set gravity to `(0, 0, 0)`.
-- Spawn `32x32` sprite objects with matching Bullet box rigid bodies, random starting positions, and initial impulses.
+- Spawn animated `32x32` pixel-art sprite objects with 2D box collision and random starting velocities.
 - Add four static wall colliders around the viewport.
 - Add keyboard controls:
   - Main menu: `Enter` starts the benchmark, `Q` quits.

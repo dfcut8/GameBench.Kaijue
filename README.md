@@ -1,6 +1,6 @@
 # GameBench.Kaijue
 
-A small Kaiju Engine desktop benchmark. It opens a fixed `640x480` window, shows a main menu, then spawns `32x32` floating sprites with box physics bodies, keeps them inside wall colliders, and shows current FPS.
+A small Kaiju Engine desktop benchmark. It opens a fixed `1280x960` window, shows a main menu, then spawns animated `32x32` pixel-art sprites with 2D box collision, keeps them inside the scene bounds, and shows current FPS.
 
 ## Prerequisites
 
@@ -65,6 +65,15 @@ $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 ```
 
 On first run, `game_content` is created from Kaiju's stock content. It is ignored by Git.
+The benchmark's project-local sprite frames live in `assets/sprites` and are copied into `game_content` on launch.
+The background music loop lives in `assets/audio/benchmark_loop.wav` and is also copied into `game_content`.
+
+Project assets can be regenerated with:
+
+```powershell
+go run .\tools\sprites
+go run .\tools\music
+```
 
 ## Controls
 
