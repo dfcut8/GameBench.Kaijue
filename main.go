@@ -161,6 +161,7 @@ func (Game) ContentDatabase() (assets.Database, error) {
 func (g *Game) Launch(host *engine.Host) {
 	logGame("launching game")
 	g.host = host
+	g.host.FontCache().SetPixelFace(uiFontFace, true)
 	logGame("configuring cameras")
 	g.configureWindowAndCameras()
 	logGame("configuring physics")
