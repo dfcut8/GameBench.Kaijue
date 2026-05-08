@@ -227,7 +227,7 @@ func (g *Game) createOverlay() {
 	g.overlayRoot = g.uiManager.Add().ToPanel()
 	g.overlayRoot.Init(tex, ui.ElementTypePanel)
 	g.overlayRoot.DontFitContent()
-	g.overlayRoot.SetColor(matrix.ColorRGBAInt(8, 10, 14, 190))
+	g.overlayRoot.SetColor(matrix.ColorRGBAInt(8, 10, 14, 255))
 	g.overlayRoot.AllowClickThrough()
 	g.overlayRoot.Base().Layout().Scale(overlayWidth, overlayHeight)
 	g.overlayRoot.Base().Layout().SetOffset(8, 8)
