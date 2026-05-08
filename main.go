@@ -28,6 +28,10 @@ import (
 const (
 	windowWidth  = 1280
 	windowHeight = 960
+	sceneWidth   = 3200
+	sceneHeight  = 3200
+	cameraWidth  = 4267
+	cameraHeight = 3200
 	spriteSize   = 32
 	wallDepth    = 32
 
@@ -45,6 +49,7 @@ const (
 	rawEngineContentPath = "editor/editor_embedded_content/editor_content"
 	musicKey             = "audio/benchmark_loop.wav"
 	uiFontFace           = rendering.FontFace("fonts/Kenney Pixel Square")
+	tilemapKey           = "tiles/benchmark_tilemap.png"
 )
 
 var benchmarkFrameKeys = []string{
@@ -85,6 +90,7 @@ type Game struct {
 	overlayLabel  *ui.Label
 	objects       []benchmarkObject
 	walls         []wallBody
+	tilemap       *sprite.Sprite
 	targetCount   int
 	updateID      engine.UpdateId
 	rng           *rand.Rand
@@ -180,8 +186,8 @@ func (g *Game) Launch(host *engine.Host) {
 }
 
 func (g *Game) configureWindowAndCameras() {
-	primary := cameras.NewStandardCameraOrthographic(windowWidth, windowHeight, windowWidth, windowHeight, matrix.NewVec3(0, 0, 100))
-	primary.SetProperties(60, -500, 500, windowWidth, windowHeight)
+	primary := cameras.NewStandardCameraOrthographic(windowWidth, windowHeight, cameraWidth, cameraHeight, matrix.NewVec3(0, 0, 100))
+	primary.SetProperties(60, -500, 500, cameraWidth, cameraHeight)
 	primary.SetLookAt(matrix.Vec3Zero())
 	g.host.Cameras.Primary.ChangeCamera(primary)
 
@@ -190,7 +196,7 @@ func (g *Game) configureWindowAndCameras() {
 	uiCamera.SetLookAt(matrix.Vec3Zero())
 	g.host.Cameras.UI.ChangeCamera(uiCamera)
 
-	logGame("configured 2d camera", "width", g.host.Window.Width(), "height", g.host.Window.Height())
+	logGame("configured 2d camera", "width", cameraWidth, "height", cameraHeight)
 }
 
 func (g *Game) configurePhysics() {
@@ -319,6 +325,9 @@ func (g *Game) startBenchmark() {
 	if err := g.loadAnimation(); err != nil {
 		logGame("failed to load benchmark animation", "error", err)
 	}
+	if err := g.createTilemap(); err != nil {
+		logGame("failed to create tilemap", "error", err)
+	}
 	if g.menuRoot != nil {
 		g.host.DestroyEntity(g.menuRoot.Base().Entity())
 		g.menuRoot = nil
@@ -326,6 +335,23 @@ func (g *Game) startBenchmark() {
 	g.overlayRoot.Base().Show()
 	g.createWalls()
 	g.refreshOverlay()
+}
+
+func (g *Game) createTilemap() error {
+	if g.tilemap != nil {
+		return nil
+	}
+	tex, err := g.host.TextureCache().Texture(tilemapKey, rendering.TextureFilterNearest)
+	if err != nil {
+		return err
+	}
+	bg := &sprite.Sprite{}
+	bg.InitFromTexture(0, 0, sceneWidth, sceneHeight, g.host, tex, matrix.ColorWhite())
+	bg.SetUnBlended()
+	bg.SetPositionZ(-10)
+	g.tilemap = bg
+	logGame("created tilemap", "key", tilemapKey, "width", sceneWidth, "height", sceneHeight)
+	return nil
 }
 
 func (g *Game) loadAnimation() error {
@@ -347,10 +373,10 @@ func (g *Game) loadAnimation() error {
 func (g *Game) createWalls() {
 	logGame("creating wall colliders")
 	g.walls = append(g.walls,
-		g.createWall("left", -windowWidth/2-wallDepth/2, 0, wallDepth, windowHeight+wallDepth*2),
-		g.createWall("right", windowWidth/2+wallDepth/2, 0, wallDepth, windowHeight+wallDepth*2),
-		g.createWall("top", 0, windowHeight/2+wallDepth/2, windowWidth+wallDepth*2, wallDepth),
-		g.createWall("bottom", 0, -windowHeight/2-wallDepth/2, windowWidth+wallDepth*2, wallDepth),
+		g.createWall("left", -sceneWidth/2-wallDepth/2, 0, wallDepth, sceneHeight+wallDepth*2),
+		g.createWall("right", sceneWidth/2+wallDepth/2, 0, wallDepth, sceneHeight+wallDepth*2),
+		g.createWall("top", 0, sceneHeight/2+wallDepth/2, sceneWidth+wallDepth*2, wallDepth),
+		g.createWall("bottom", 0, -sceneHeight/2-wallDepth/2, sceneWidth+wallDepth*2, wallDepth),
 	)
 }
 
@@ -401,10 +427,10 @@ func (g *Game) simulate2D(deltaTime float64) {
 	}
 
 	halfSize := float64(spriteSize) * 0.5
-	minX := -float64(windowWidth)*0.5 + halfSize
-	maxX := float64(windowWidth)*0.5 - halfSize
-	minY := -float64(windowHeight)*0.5 + halfSize
-	maxY := float64(windowHeight)*0.5 - halfSize
+	minX := -float64(sceneWidth)*0.5 + halfSize
+	maxX := float64(sceneWidth)*0.5 - halfSize
+	minY := -float64(sceneHeight)*0.5 + halfSize
+	maxY := float64(sceneHeight)*0.5 - halfSize
 
 	grid := make(map[[2]int][]int, len(g.objects))
 	cellSize := float64(spriteSize)
@@ -571,8 +597,8 @@ func (g *Game) syncObjectCount() {
 }
 
 func (g *Game) spawnObject() benchmarkObject {
-	x := randomRange(g.rng, -windowWidth/2+spriteSize, windowWidth/2-spriteSize)
-	y := randomRange(g.rng, -windowHeight/2+spriteSize, windowHeight/2-spriteSize)
+	x := randomRange(g.rng, -sceneWidth/2+spriteSize, sceneWidth/2-spriteSize)
+	y := randomRange(g.rng, -sceneHeight/2+spriteSize, sceneHeight/2-spriteSize)
 
 	color := matrix.NewColor(
 		matrix.Float(randomRange(g.rng, 90, 245))/255,
