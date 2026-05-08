@@ -161,7 +161,6 @@ func (Game) ContentDatabase() (assets.Database, error) {
 func (g *Game) Launch(host *engine.Host) {
 	logGame("launching game")
 	g.host = host
-	g.host.FontCache().SetPixelFace(uiFontFace, true)
 	logGame("configuring cameras")
 	g.configureWindowAndCameras()
 	logGame("configuring physics")
@@ -219,13 +218,19 @@ func (g *Game) playBackgroundMusic() {
 }
 
 func (g *Game) createOverlay() {
+	const (
+		overlayWidth  = 390
+		overlayHeight = 104
+		overlayPad    = 10
+	)
+	tex, _ := g.host.TextureCache().Texture(assets.TextureSquare, rendering.TextureFilterNearest)
 	g.overlayRoot = g.uiManager.Add().ToPanel()
-	g.overlayRoot.Init(nil, ui.ElementTypePanel)
+	g.overlayRoot.Init(tex, ui.ElementTypePanel)
 	g.overlayRoot.DontFitContent()
-	g.overlayRoot.SetColor(matrix.ColorTransparent())
+	g.overlayRoot.SetColor(matrix.ColorRGBAInt(8, 10, 14, 190))
 	g.overlayRoot.AllowClickThrough()
-	g.overlayRoot.Base().Layout().Scale(windowWidth, 104)
-	g.overlayRoot.Base().Layout().SetOffset(0, 0)
+	g.overlayRoot.Base().Layout().Scale(overlayWidth, overlayHeight)
+	g.overlayRoot.Base().Layout().SetOffset(8, 8)
 
 	g.overlayLabel = g.uiManager.Add().ToLabel()
 	g.overlayLabel.Init("")
@@ -234,9 +239,9 @@ func (g *Game) createOverlay() {
 	g.overlayLabel.SetColor(matrix.ColorWhite())
 	g.overlayLabel.SetBGColor(matrix.ColorTransparent())
 	g.overlayLabel.SetWrap(false)
-	g.overlayLabel.SetMaxWidth(windowWidth - 16)
-	g.overlayLabel.Base().Layout().Scale(windowWidth-16, 96)
-	g.overlayLabel.Base().Layout().SetOffset(8, 8)
+	g.overlayLabel.SetMaxWidth(overlayWidth - overlayPad*2)
+	g.overlayLabel.Base().Layout().Scale(overlayWidth-overlayPad*2, overlayHeight-overlayPad*2)
+	g.overlayLabel.Base().Layout().SetOffset(overlayPad, overlayPad)
 	g.overlayRoot.AddChild(g.overlayLabel.Base())
 	g.refreshOverlay()
 	g.overlayRoot.Base().Hide()
@@ -265,13 +270,13 @@ func (g *Game) createMainMenu() {
 	title.Base().Layout().SetOffset(110, 96)
 	g.menuRoot.AddChild(title.Base())
 
-	start := g.createMenuButton("Start Benchmark", 220, 194, func() {
+	start := g.createMenuButton("Start Benchmark", 170, 194, func() {
 		logGame("start benchmark selected")
 		g.startBenchmark()
 	})
 	g.menuRoot.AddChild(start.Base())
 
-	quit := g.createMenuButton("Quit", 220, 260, func() {
+	quit := g.createMenuButton("Quit", 170, 260, func() {
 		logGame("quit selected from main menu")
 		g.host.Close()
 	})
@@ -279,15 +284,27 @@ func (g *Game) createMainMenu() {
 }
 
 func (g *Game) createMenuButton(text string, x, y float32, click func()) *ui.Button {
+	const (
+		menuButtonWidth  = 300
+		menuButtonHeight = 48
+	)
 	tex, _ := g.host.TextureCache().Texture(assets.TextureSquare, rendering.TextureFilterNearest)
 	button := g.uiManager.Add().ToButton()
 	button.Init(tex, text)
-	button.Label().SetText(text)
-	button.Label().SetFontFace(uiFontFace)
-	button.Label().SetFontSize(19)
 	button.SetColor(matrix.ColorRGBAInt(230, 234, 241, 255))
-	button.Base().Layout().Scale(200, 48)
+	button.Base().Layout().Scale(menuButtonWidth, menuButtonHeight)
 	button.Base().Layout().SetOffset(x, y)
+
+	label := button.Label()
+	label.SetText(text)
+	label.SetFontFace(uiFontFace)
+	label.SetFontSize(19)
+	label.SetColor(matrix.ColorBlack())
+	label.SetBGColor(matrix.ColorTransparent())
+	label.SetMaxWidth(menuButtonWidth)
+	label.Base().Layout().Scale(menuButtonWidth, menuButtonHeight)
+	label.Base().Layout().SetOffset(0, 0)
+
 	button.Base().AddEvent(ui.EventTypeClick, click)
 	return button
 }
